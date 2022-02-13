@@ -2,7 +2,7 @@
 
 This full stack web application is specially designed for persons who love travelling and going on tour vacations.
 
-This app can be found at [https://spy1abhishek.herokuapp.com/](https://spy1abhishek.herokuapp.com/).
+This app can be found at [https://spynatours.herokuapp.com/](https://spynatours.herokuapp.com/).
 
 The API and the app itself are hosted on the same server.
 
