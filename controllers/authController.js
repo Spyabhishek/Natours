@@ -6,23 +6,25 @@ const catchAsync = require('./../utils/catchAsync');
 const AppError = require('./../utils/appError');
 const Email = require('./../utils/email');
 
+/////////////////////////  GENERATE TOKEN
 const signToken = id => {
   return jwt.sign({ id }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN
   });
 };
 
-const createSendToken = (user, statusCode, res) => {
+////////////////////////  SEND TOKEN
+const createSendToken = (user, statusCode, req, res) => {
   const token = signToken(user._id);
-  const cookieOptions = {
+  
+  res.cookie('jwt', token, {
     expires: new Date(
       Date.now() + process.env.JWT_COOKIE_EXPIRES_IN * 24 * 60 * 60 * 1000
     ),
-    httpOnly: true
-  };
-  if (process.env.NODE_ENV === 'production') cookieOptions.secure = true;
+    httpOnly: true,
+    secure: req.secure || req.headers('x-forwarded-proto') === 'https'
 
-  res.cookie('jwt', token, cookieOptions);
+  });
 
   // Remove password from output
   user.password = undefined;
@@ -36,6 +38,7 @@ const createSendToken = (user, statusCode, res) => {
   });
 };
 
+/////////////////////////  SIGN UP
 exports.signup = catchAsync(async (req, res, next) => {
   const newUser = await User.create({
     name: req.body.name,
@@ -45,12 +48,12 @@ exports.signup = catchAsync(async (req, res, next) => {
   });
 
   const url = `${req.protocol}://${req.get('host')}/me`;
-  // console.log(url);
   await new Email(newUser, url).sendWelcome();
 
-  createSendToken(newUser, 201, res);
+  createSendToken(newUser, 201, req, res);
 });
 
+/////////////////////////////  LOGIN
 exports.login = catchAsync(async (req, res, next) => {
   const { email, password } = req.body;
 
@@ -66,9 +69,10 @@ exports.login = catchAsync(async (req, res, next) => {
   }
 
   // 3) If everything ok, send token to client
-  createSendToken(user, 200, res);
+  createSendToken(user, 200, req, res);
 });
 
+////////////////////////////////  LOGOUT
 exports.logout = (req, res) => {
   res.cookie('jwt', 'loggedout', {
     expires: new Date(Date.now() + 10 * 1000),
@@ -77,6 +81,7 @@ exports.logout = (req, res) => {
   res.status(200).json({ status: 'success' });
 };
 
+////////////////////////////////  PROTECTED ROUTE can only be accessed by LOGGEDIN users 
 exports.protect = catchAsync(async (req, res, next) => {
   // 1) Getting token and check of it's there
   let token;
@@ -152,7 +157,7 @@ exports.isLoggedIn = async (req, res, next) => {
   }
   next();
 };
-
+///////////////////////////////////  ROUTE RESTRICTION (like delete route can only be accessed by admin)
 exports.restrictTo = (...roles) => {
   return (req, res, next) => {
     // roles ['admin', 'lead-guide']. role='user'
@@ -166,6 +171,7 @@ exports.restrictTo = (...roles) => {
   };
 };
 
+//////////////////////////////////   FORGOT PASSWORD
 exports.forgotPassword = catchAsync(async (req, res, next) => {
   // 1) Get user based on POSTed email
   const user = await User.findOne({ email: req.body.email });
@@ -200,6 +206,7 @@ exports.forgotPassword = catchAsync(async (req, res, next) => {
   }
 });
 
+////////////////////////////////////////////// RESET-PASSWORD
 exports.resetPassword = catchAsync(async (req, res, next) => {
   // 1) Get user based on the token
   const hashedToken = crypto
@@ -224,9 +231,10 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
 
   // 3) Update changedPasswordAt property for the user
   // 4) Log the user in, send JWT
-  createSendToken(user, 200, res);
+  createSendToken(user, 200, req, res);
 });
 
+////////////////////////////////////////   UPDATE PASSWORD FOR LOGGEDIN USERS(req.user)
 exports.updatePassword = catchAsync(async (req, res, next) => {
   // 1) Get user from collection
   const user = await User.findById(req.user.id).select('+password');
@@ -243,5 +251,5 @@ exports.updatePassword = catchAsync(async (req, res, next) => {
   // User.findByIdAndUpdate will NOT work as intended!
 
   // 4) Log user in, send JWT
-  createSendToken(user, 200, res);
+  createSendToken(user, 200, req, res);
 });
